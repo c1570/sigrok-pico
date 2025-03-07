@@ -1,4 +1,5 @@
-//Pin usage
+#ifndef PICO_RP2350
+//Pin usage on RP2040/Pico
 //GP0 and 1 are reserved for debug uart
 //GP2-GP22 are digital inputs
 //GP23 controls power supply modes and is not a board input
@@ -8,11 +9,34 @@
 #define NUM_A_CHAN 3
 //number of digital channels
 #define NUM_D_CHAN 21
-//Mask of bits 22:2 to use as inputs - 
+//Mask of bits 22:2 to use as inputs
 #define GPIO_D_MASK 0x7FFFFC
+//Upper bits to mask out
+#define PIO_UPPER_BITS 11
+//Start with GPIO2 (reserve 0 and 1 for debug UART)
+#define START_GPIO_PIN 2
+//First ADC pin number
+#define START_ADC_PIN 26
+//Enable debug UART
+#define SR_UART_DEBUG 1
 //Storage size of the DMA buffer.  The buffer is split into two halves so that when the first
 //buffer fills we can send the trace data serially while the other buffer is DMA'dinto
 #define DMA_BUF_SIZE 220000
+
+#else
+
+// RP2350B
+#define NUM_A_CHAN 3
+#define NUM_D_CHAN 32
+#define SR_UART_DEBUG 0
+#define GPIO_D_MASK 0xFFFFFF
+#define PIO_UPPER_BITS 0
+#define START_GPIO_PIN 0
+#define START_ADC_PIN 40
+#define DMA_BUF_SIZE 440000
+
+#endif
+
 //The size of the buffer sent to the CDC serial
 //The TUD CDC buffer is only 256B so it doesn't help to have more than this.
 #define TX_BUF_SIZE 260
@@ -33,13 +57,14 @@
 //Boosted sys_clk in khz.  Runs the part above its specifed frequency limit to support faster
 //processing of digital run length encoding which in some cases may allow for faster
 //streaming of digital only data.
-//****************************
-//Use this at your own risk
-//***************************
+// ****************************
+// Use this at your own risk
+// ***************************
 //Frequency must be a 24Mhz multiple and less than 300Mhz to avoid known issues
 //The authors PICO failed at 288Mhz, but testing with 240Mhz seemed reliable
 //#define SYS_CLK_BOOST_EN 1
 //#define SYS_CLK_BOOST_FREQ 240000
+#ifdef SR_UART_DEBUG
 int Dprintf(const char *fmt, ...)
 {
   
@@ -65,8 +90,11 @@ int Dprintf(const char *fmt, ...)
          
              }
     return len;
- 
-} 
+}
+#else
+int Dprintf(const char *fmt, ...) {}
+#endif
+
 typedef struct sr_device {
   uint32_t sample_rate;
   uint32_t num_samples;
@@ -123,7 +151,7 @@ void init(sr_device_t *d){
     reset(d);
     d->a_mask=0;
     d->d_mask=0;
-    d->sample_rate=5000;
+    d->sample_rate=1000000;
     d->num_samples=10;
     d->a_chan_cnt=0;
     d->d_nps=0;
@@ -221,12 +249,14 @@ int process_char(sr_device_t *d,char charin){
           }
            break;
       case 'F': //fixed set of samples
+           if(!(d->a_mask) && !(d->d_mask)) { ret=1; break; }
 	   Dprintf("STRT_FIX\n\r");
            tx_init(d);
            d->cont=0;
            ret=0;
            break;
       case 'C':  //continous mode
+            if(!(d->a_mask) && !(d->d_mask)) { ret=1; break; }
             tx_init(d);
             d->cont=1;
             Dprintf("STRT_CONT\n\r");

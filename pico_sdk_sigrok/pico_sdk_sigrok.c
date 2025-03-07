@@ -274,9 +274,9 @@ uint32_t  get_cval(uint8_t *dbuf){
        }else{
            cval=(*((uint32_t *) (dbuf+rxbufdidx)));
            //To make a 32bit value written from PIO we pull in IOs that aren't actuall
-           //digital channels so mask them off
-           cval<<=11;
-           cval>>=11;
+           //digital channels so mask them off (RP2040/Pico only)
+           cval<<=PIO_UPPER_BITS;
+           cval>>=PIO_UPPER_BITS;
        }
        rxbufdidx+=d_dma_bps;
        return cval;
@@ -330,8 +330,8 @@ void send_slice_init(sr_device_t *d,uint8_t *dbuf){
    //the use of get_cval is inefficient, but only done once per half buffer
    lval=get_cval(dbuf);
    //If we are in 4B mode shift off invalid bits
-   lval<<=11;
-   lval>>=11;
+   lval<<=PIO_UPPER_BITS;
+   lval>>=PIO_UPPER_BITS;
    tx_d_samp(d,lval);
    samp_remain--;
    rlecnt=0;
@@ -388,8 +388,8 @@ void __attribute__ ((noinline)) send_slices_4B(sr_device_t *d,uint8_t *dbuf){
        cval=(*((uint32_t *) (dbuf+rxbufdidx)));
        rxbufdidx+=4;
        //Mask invalid bits
-       cval<<=11;
-       cval>>=11;
+       cval<<=PIO_UPPER_BITS;
+       cval>>=PIO_UPPER_BITS;
        if(cval==lval){
 	   rlecnt++;
          }
@@ -452,9 +452,16 @@ int check_half(sr_device_t *d,volatile uint32_t *tstsa0,volatile uint32_t *tstsa
   uint64_t stime,etime,dtime;
   volatile uint32_t *piodbg1,*piodbg2;
   volatile uint8_t piorxstall1,piorxstall2;
+  #ifdef PICO_RP2350
+  const int DMA_BUSY = 26;
+  const int DMA_CHAIN_TO = 13;
+  #else
+  const int DMA_BUSY = 24;
+  const int DMA_CHAIN_TO = 11;
+  #endif
   stime=time_us_64();
-  a0busy=((*tstsa0)>>24)&1;
-  d0busy=((*tstsd0)>>24)&1;
+  a0busy=((*tstsa0)>>DMA_BUSY)&1;
+  d0busy=((*tstsd0)>>DMA_BUSY)&1;
 
   if(((a0busy==0)||(d->a_mask==0))
      &&((d0busy==0)||(d->d_mask==0))){
@@ -478,17 +485,17 @@ int check_half(sr_device_t *d,volatile uint32_t *tstsa0,volatile uint32_t *tstsa
        //PIO/ADC FIFOs indicates an RXstall condition which indicates PIO lost samples, then we abort.  
        //Note that in all cases we should never actually send any corrupted data we just send less than what was requested.
        //Note that we must use the "alias" versions of the DMA CSRs to prevent writes from triggering them.
-       //Since we swap the csr pointers we determine the other half from the address offsets.
-       uint8_t myachan=(((uint32_t) tstsa0)>>6)&0xF;
+       uint8_t myachan=(((uint32_t) tstsa0)>>6)&0xF; // <-- determine channel numbers from reg address offsets
        uint8_t otherachan=(((uint32_t) tstsa1)>>6)&0xF;
        uint8_t mydchan=(((uint32_t)tstsd0)>>6)&0xF;
        uint8_t otherdchan=(((uint32_t)tstsd1)>>6)&0xF;
        //  Dprintf("my stts pre a 0x%X d 0x%X\n\r",*tstsa0,*tstsd0); 
        //Set my chain to myself so that I can't chain to the other. 
+       //use aliases here to prevent triggers
        volatile uint32_t ttmp;
-       ttmp=((tstsd0[1])&0xFFFF87FF)|mydchan<<11;
+       ttmp=((tstsd0[1])&(~(0xf<<DMA_CHAIN_TO)))|mydchan<<DMA_CHAIN_TO;
        tstsd0[1]=ttmp;
-       ttmp=((tstsa0[1])&0xFFFF87FF)|myachan<<11;
+       ttmp=((tstsa0[1])&(~(0xf<<DMA_CHAIN_TO)))|myachan<<DMA_CHAIN_TO;
        tstsa0[1]=ttmp;
        (*t_addra0)=(uint32_t) a_start_addr;
        (*t_addrd0)=(uint32_t) d_start_addr;
@@ -520,9 +527,9 @@ int check_half(sr_device_t *d,volatile uint32_t *tstsa0,volatile uint32_t *tstsa
 
        //Set my other chain to me
        //use aliases here as well to prevent triggers
-       ttmp=((tstsd1[1])&0xFFFF87FF)|mydchan<<11;
+       ttmp=((tstsd1[1])&(~(0xf<<DMA_CHAIN_TO)))|mydchan<<DMA_CHAIN_TO;
        tstsd1[1]=ttmp;
-       ttmp=((tstsa1[1])&0xFFFF87FF)|myachan<<11;
+       ttmp=((tstsa1[1])&(~(0xf<<DMA_CHAIN_TO)))|myachan<<DMA_CHAIN_TO;
        tstsa1[1]=ttmp;
        num_halves++;
        piodbg2=(volatile uint32_t *)(PIO0_BASE+0x8); //PIO DBG
@@ -537,13 +544,13 @@ int check_half(sr_device_t *d,volatile uint32_t *tstsa0,volatile uint32_t *tstsa
        //half and all the remaining samples we need are in the 2nd half.
        //Note that in continuous mode num_samples isn't defined.
        uint8_t proc_fail;
-       proc_fail=(~(((((*tstsa1)>>24)&1)||(d->a_mask==0))
-		    &&((((*tstsd1)>>24)&1)||(d->d_mask==0)))&1);
+       proc_fail=(~(((((*tstsa1)>>DMA_BUSY)&1)||(d->a_mask==0))
+		    &&((((*tstsd1)>>DMA_BUSY)&1)||(d->d_mask==0)))&1);
        //Dprintf("pf 0x%X 0x%X %d\n\r",*tstsa1,*tstsd1,proc_fail);
        //       if(mask_xfer_err
        //     || ((piorxstall1==0)
-       //      &&((((*tstsa1)>>24)&1)||(d->a_mask==0))
-       //		  &&((((*tstsd1)>>24)&1)||(d->d_mask==0)))){
+       //      &&((((*tstsa1)>>DMA_BUSY)&1)||(d->a_mask==0))
+       //		  &&((((*tstsd1)>>DMA_BUSY)&1)||(d->d_mask==0)))){
        if(mask_xfer_err
 	      || ((piorxstall1==0)
                   &&(adcfail==0)
@@ -637,6 +644,7 @@ void core1_code(){
         __wfe(); 
 	__wfe();
      }     
+     #ifdef SR_UART_DEBUG
      if(dev.started==false){
       //always drain all defined uarts as if that is not done it can 
        //effect the usb serial CDC stability
@@ -645,7 +653,8 @@ void core1_code(){
        while (uart_is_readable_within_us(uart0, 0)) {
             uartch = uart_getc(uart0);
        }
-     }    
+     }
+     #endif
      //look for commands on usb cdc 
      intin=getchar_timeout_us(0);
      //The '+' is the only character we track during normal sampling because it can end
@@ -684,10 +693,14 @@ int main(){
     uint64_t starttime,endtime;
     set_sys_clock_khz(SYS_CLK_BASE,true);
     stdio_usb_init();
+
+    #ifdef SR_UART_DEBUG
     uart_set_format(uart0,8,1,1);
     uart_init(uart0,921600);
     gpio_set_function(0, GPIO_FUNC_UART);
-    gpio_set_function(1, GPIO_FUNC_UART);   
+    gpio_set_function(1, GPIO_FUNC_UART);
+    #endif
+
     sleep_us(100000);    
     Dprintf("\n\rHello from PICO sigrok device \n\r");
 
@@ -697,17 +710,18 @@ int main(){
     uint f_clk_sys = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_SYS);
     Dprintf("clk_sys = %dkHz\n\r", f_clk_sys);
 
+    #if 0
     //Set GPIO23 (TP4) to control switched mode power supply noise
     gpio_init_mask(1<<23);
     gpio_set_dir_masked(1<<23,1<<23);
     gpio_put_masked(1<<23,1<<23);
+    #endif
     //Early CDC IO code had lots of sleep statements, but the TUD code seems to have sufficient
     //checks that this isn't needed, but it doesn't hurt...
     sleep_us(100000);    
-    //GPIOs 26 through 28 (the ADC ports) are on the PICO, GPIO29 is not a pin on the PICO
-    adc_gpio_init(26);
-    adc_gpio_init(27);
-    adc_gpio_init(28);
+    adc_gpio_init(START_ADC_PIN+0);
+    adc_gpio_init(START_ADC_PIN+1);
+    adc_gpio_init(START_ADC_PIN+2);
     adc_init();
 
     multicore_launch_core1(core1_code);
@@ -827,8 +841,10 @@ int main(){
            if(dev.a_chan_cnt==0){
               Dprintf("Boost up\n\r");
               set_sys_clock_khz(SYS_CLK_BOOST_FREQ,true);
+              #ifdef SR_UART_DEBUG
               //UART is based on sys_clk so must be reprogrammed
               uart_init(uart0,UART_BAUD);
+              #endif
            }
 #endif
            lowerhalf=1;
@@ -986,6 +1002,7 @@ for faster parsing.
     13-14  2          2
     15-16  2          3
     17-21  4          3
+    22-32  4          4
 */
              dev.pin_count=0 ;
              if(dev.d_mask&0x0000000F) dev.pin_count+=4;
@@ -1008,8 +1025,7 @@ for faster parsing.
              // Configure state machine to loop over this `in` instruction forever,
              // with autopush enabled.
              pio_sm_config c = pio_get_default_sm_config();
-             //start at GPIO2 (keep 0 and 1 for uart)
-             sm_config_set_in_pins(&c, 2);
+             sm_config_set_in_pins(&c, START_GPIO_PIN);
              sm_config_set_wrap(&c, offset, offset);
 
              uint16_t div_int;              
@@ -1163,7 +1179,9 @@ for faster parsing.
 #ifdef SYS_CLK_BOOST_EN 
            //Drop down to base to reduce power when not sampling
            set_sys_clock_khz(SYS_CLK_BASE,true);
+           #ifdef SR_UART_DEBUG
            uart_init(uart0,UART_BAUD);
+           #endif
            Dprintf("Boost down\n\r");
 #endif
         }//i sending==false
