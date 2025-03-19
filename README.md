@@ -1,12 +1,14 @@
-# sigrok-rp2350b
-https://github.com/c1570/sigrok-rp2350b
+# sigrok-rp2350
+https://github.com/c1570/sigrok-rp2350
 
-Use an [RP2350B microcontroller](https://en.wikipedia.org/wiki/RP2350) as a logic analyzer and oscilloscope with [sigrok](https://sigrok.org/).
+Use an [RP2350(B) microcontroller](https://en.wikipedia.org/wiki/RP2350) as a logic analyzer and oscilloscope with [sigrok](https://sigrok.org/).
 
 * work in progress
-* 32 digital channels (48 are possible but need major firmware changes)
 * twice the buffer size of sigrok-pico rp2040
-* **not** intended for the Pico 2. Use this with "Pimoroni PGA2350" or "WeAct RP2350B core board" or similar.
+* 32 digital channels on the RP2350B.
+  * Use this with "Pimoroni PGA2350" or "WeAct RP2350B core board" or similar.
+  * 48 channels are possible but need major firmware changes.
+* 21 digital channels on the RP2350A (Pico 2 etc., untested).
 
 You need an up to date sigrok to use this:
 sigrok-cli 0.7.2 lacks the `raspberrypi-pico` driver.

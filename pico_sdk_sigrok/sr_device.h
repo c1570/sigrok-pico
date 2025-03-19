@@ -25,15 +25,28 @@
 
 #else
 
-// RP2350B
+
+// RP2350B (PGA2350, etc.)
 #define NUM_A_CHAN 3
 #define NUM_D_CHAN 32
-#define SR_UART_DEBUG 0
 #define GPIO_D_MASK 0xFFFFFF
 #define PIO_UPPER_BITS 0
 #define START_GPIO_PIN 0
 #define START_ADC_PIN 40
+#define SR_UART_DEBUG 0
 #define DMA_BUF_SIZE 440000
+
+/*
+// RP2350 (Pico 2, etc.)
+#define NUM_A_CHAN 3
+#define NUM_D_CHAN 21
+#define GPIO_D_MASK 0x7FFFFC
+#define PIO_UPPER_BITS 11
+#define START_GPIO_PIN 2
+#define START_ADC_PIN 26
+#define SR_UART_DEBUG 1
+#define DMA_BUF_SIZE 440000
+*/
 
 #endif
 
