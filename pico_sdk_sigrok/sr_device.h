@@ -67,6 +67,7 @@
 //Base value of sys_clk in khz.  Must be <=125Mhz per RP2040 spec and a multiple of 24Mhz
 //to support integer divisors of the PIO clock and ADC clock
 #define SYS_CLK_BASE 120000
+#define SYS_VOLTAGE_BASE VREG_VOLTAGE_1_10
 //Boosted sys_clk in khz.  Runs the part above its specifed frequency limit to support faster
 //processing of digital run length encoding which in some cases may allow for faster
 //streaming of digital only data.
@@ -226,7 +227,7 @@ int process_char(sr_device_t *d,char charin){
        break;
      case 'R':
        tmpint=atol(&(d->cmdstr[1]));
-       if((tmpint>=5000)&&(tmpint<=120000016)){ //Add 16 to support cfg_bits
+       if((tmpint>=5000)&&(tmpint<=400000016)){ //Add 16 to support cfg_bits
           d->sample_rate=tmpint;
           //Dprintf("SMPRATE= %u\n\r",d->sample_rate);
           ret=1;

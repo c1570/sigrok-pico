@@ -12,6 +12,7 @@
 #include "hardware/gpio.h"
 //Note: Hardware libraries must be added to CMakelists.txt
 #include "hardware/pio.h"
+#include "hardware/vreg.h"
 #include "hardware/adc.h"
 #include "hardware/dma.h"
 #include "hardware/structs/bus_ctrl.h"
@@ -691,7 +692,10 @@ int main(){
     int res;
     bool init_done=false;
     uint64_t starttime,endtime;
+    vreg_set_voltage(SYS_VOLTAGE_BASE);
+    busy_wait_us(10000);
     set_sys_clock_khz(SYS_CLK_BASE,true);
+    busy_wait_us(10000);
     stdio_usb_init();
 
     #ifdef SR_UART_DEBUG
@@ -841,6 +845,7 @@ int main(){
            if(dev.a_chan_cnt==0){
               Dprintf("Boost up\n\r");
               set_sys_clock_khz(SYS_CLK_BOOST_FREQ,true);
+              busy_wait_us(10000);
               #ifdef SR_UART_DEBUG
               //UART is based on sys_clk so must be reprogrammed
               uart_init(uart0,UART_BAUD);
@@ -1179,6 +1184,7 @@ for faster parsing.
 #ifdef SYS_CLK_BOOST_EN 
            //Drop down to base to reduce power when not sampling
            set_sys_clock_khz(SYS_CLK_BASE,true);
+           busy_wait_us(10000);
            #ifdef SR_UART_DEBUG
            uart_init(uart0,UART_BAUD);
            #endif
